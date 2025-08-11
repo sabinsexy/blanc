@@ -6,13 +6,13 @@ const createJestConfig = nextJest({
 });
 
 const config: Config = {
-  displayName: '@blanc/blanc',
+  displayName: '@blanc/web-app',
   preset: '../../jest.preset.js',
   transform: {
     '^(?!.*\\.(js|jsx|ts|tsx|css|json)$)': '@nx/react/plugins/jest',
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
-  coverageDirectory: '../../coverage/apps/blanc',
+  coverageDirectory: '../../coverage/apps/web-app',
   testEnvironment: 'jsdom',
 };
 

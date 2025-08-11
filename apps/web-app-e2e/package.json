@@ -1,10 +1,10 @@
 {
-  "name": "@blanc/blanc-e2e",
+  "name": "@blanc/web-app-e2e",
   "version": "0.0.1",
   "private": true,
   "nx": {
     "implicitDependencies": [
-      "@blanc/blanc"
+      "@blanc/web-app"
     ]
   }
 }
