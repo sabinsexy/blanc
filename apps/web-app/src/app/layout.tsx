@@ -1,4 +1,5 @@
 import './global.css';
+import { GeistMono } from 'geist/font/mono';
 
 export const metadata = {
   title: 'Welcome to ',
@@ -12,7 +13,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className={GeistMono.className}>{children}</body>
     </html>
   );
 }

@@ -4,10 +4,10 @@
   "files": [],
   "references": [
     {
-      "path": "./apps/blanc-e2e"
+      "path": "./apps/web-app-e2e"
     },
     {
-      "path": "./apps/blanc"
+      "path": "./apps/web-app"
     }
   ]
 }
