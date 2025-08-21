@@ -1,5 +1,5 @@
 {
-  "name": "web-app-tanstack",
+  "name": "@blanc/web-app-tanstack",
   "private": true,
   "type": "module",
   "scripts": {
@@ -7,7 +7,13 @@
     "start": "node .output/server/index.mjs",
     "build": "vite build",
     "serve": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "biome lint src/",
+    "lint:fix": "biome lint --write src/",
+    "format": "biome format src/",
+    "format:fix": "biome format --write src/",
+    "check": "biome check src/",
+    "check:fix": "biome check --write src/"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.0.6",
