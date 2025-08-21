@@ -6,6 +6,7 @@
   "private": true,
   "dependencies": {
     "@prisma/client": "^6.14.0",
+    "@prisma/extension-accelerate": "^2.0.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "geist": "^1.4.2",
