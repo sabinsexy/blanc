@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
   "extends": "./tsconfig.base.json",
   "compileOnSave": false,
   "files": [],
@@ -10,4 +11,35 @@
       "path": "./apps/web-app"
     }
   ]
+=======
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "types": [
+        "./cloudflare-env.d.ts",
+        "node"
+    ]
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+>>>>>>> d9b03b1 (Project reser without nx)
 }
