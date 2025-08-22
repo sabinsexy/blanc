@@ -4,6 +4,10 @@ import { useState, useEffect } from 'react';
 import { useAccount, useConnect, useDisconnect, useSignMessage } from 'wagmi';
 import { SiweMessage } from 'siwe';
 import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { WalletIcon } from '@web3icons/react';
+import { ArrowLeft } from 'lucide-react';
+import { motion } from 'motion/react';
 
 export default function LoginPage() {
   const { address, isConnected } = useAccount();
@@ -22,6 +26,50 @@ export default function LoginPage() {
   }, []);
 
 
+  const handleWalletConnect = async (walletType: string) => {
+    if (walletType === 'phantom') {
+      // Check if Phantom is installed
+      if (typeof window !== 'undefined' && (window as any).phantom?.solana) {
+        try {
+          setIsLoading(true);
+          setError(null);
+          
+          // Find phantom connector
+          const connector = connectors.find(c => c.id === 'phantom' || c.name.toLowerCase().includes('phantom'));
+          
+          if (connector) {
+            const result = await connect({ connector });
+            // After successful connection, automatically trigger sign
+            if (result && result.accounts && result.accounts[0]) {
+              // Wait a moment for state to update, then sign
+              setTimeout(async () => {
+                try {
+                  await handleSiweAuth();
+                } catch (err) {
+                  console.error('SIWE Auth failed:', err);
+                  setIsLoading(false);
+                }
+              }, 500);
+            }
+          } else {
+            setError('Phantom connector not available');
+            setIsLoading(false);
+          }
+        } catch (err) {
+          console.error('Phantom connection failed:', err);
+          setError('Phantom wallet connection failed');
+          setIsLoading(false);
+        }
+      } else {
+        // Redirect to Phantom download page
+        window.open('https://phantom.com/download', '_blank');
+      }
+    } else {
+      // Disable other wallets for now
+      setError('Only Phantom wallet is supported currently');
+    }
+  };
+
   const handleSiweAuth = async () => {
     if (!address) {
       setError('Please connect your wallet first');
@@ -32,11 +80,8 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      // For demo purposes, create SIWE message directly without backend
-      // In production, this would go through the GraphQL API
       const nonce = Math.random().toString(36).substring(2, 15);
 
-      // Step 1: Create SIWE message
       const message = new SiweMessage({
         domain: window.location.host,
         address: address,
@@ -47,19 +92,16 @@ export default function LoginPage() {
         nonce: nonce,
       });
 
-      // Step 2: Sign the message
       const signature = await signMessageAsync({
         message: message.prepareMessage()
       });
 
-      // Step 3: Verify signature (basic verification)
       const verifyResult = await message.verify({ signature });
       
       if (!verifyResult.success) {
         throw new Error('Signature verification failed');
       }
 
-      // Step 4: Create demo session token and store
       const demoSessionToken = `demo-session-${address}-${Date.now()}`;
       localStorage.setItem('auth-token', demoSessionToken);
       localStorage.setItem('wallet-address', address);
@@ -73,107 +115,154 @@ export default function LoginPage() {
     }
   };
 
-  // Show loading state during hydration
-  if (!isMounted) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          <div className="mono-card text-center">
-            <div className="mb-8">
-              <h1 className="mono-title text-2xl mb-2">SKIFF MAIL CLONE</h1>
-              <p className="mono-text-small">End-to-end encrypted email with Web3 authentication</p>
+
+  if (!isConnected) {
+    // Show loading page when connecting/signing
+    if (isLoading) {
+      return (
+        <div className="min-h-screen bg-background flex items-center justify-center p-4">
+          <div className="bg-card border rounded-lg p-6 w-full max-w-sm">
+            {/* Back button */}
+            <div className="mb-6">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setIsLoading(false)}
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
             </div>
-            <p className="mono-text">Loading...</p>
+            
+            {/* Large Phantom icon */}
+            <div className="flex flex-col items-center text-center">
+              <div className="relative mb-6">
+                <WalletIcon id="phantom" variant="branded" size="80" className="w-20 h-20" />
+              </div>
+              
+              <h2 className="text-xl font-semibold mb-2">Connecting to Phantom</h2>
+              <p className="text-muted-foreground text-sm">Please sign the message in your wallet</p>
+            </div>
           </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4 relative">
+        {/* Top left corner logo */}
+        <div className="absolute top-4 left-4">
+          <span className="text-lg font-bold text-black">blanc</span>
+        </div>
+        
+        <div className="bg-card border rounded-lg p-6">
+          <div className="text-center mb-6">
+            <h1 className="text-2xl font-bold mb-2">Welcome to blanc</h1>
+          </div>
+          
+          <div className="flex gap-4">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-24 w-24 [&_svg]:!w-16 [&_svg]:!h-16"
+              onClick={() => handleWalletConnect('phantom')}
+              disabled={isLoading}
+            >
+              <WalletIcon id="phantom" variant="branded" size="64" className="w-16 h-16" />
+            </Button>
+            
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-24 w-24 [&_svg]:!w-16 [&_svg]:!h-16 opacity-50"
+              onClick={() => handleWalletConnect('metamask')}
+              disabled={true}
+            >
+              <WalletIcon id="metamask" variant="branded" size="64" className="w-16 h-16" />
+            </Button>
+            
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-24 w-24 [&_svg]:!w-16 [&_svg]:!h-16 opacity-50"
+              onClick={() => handleWalletConnect('coinbase')}
+              disabled={true}
+            >
+              <WalletIcon id="coinbase" variant="branded" size="64" className="w-16 h-16" />
+            </Button>
+            
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-24 w-24 [&_svg]:!w-16 [&_svg]:!h-16 opacity-50"
+              onClick={() => handleWalletConnect('walletconnect')}
+              disabled={true}
+            >
+              <WalletIcon id="walletconnect" variant="branded" size="64" className="w-16 h-16" />
+            </Button>
+          </div>
+
+          {(error) && (
+            <div className="mt-4 p-3 border border-destructive rounded-md">
+              <p className="text-sm text-destructive">
+                {error}
+              </p>
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
+  // If connected but not yet signed, show loading state
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="mono-card text-center">
-          {/* Header */}
-          <div className="mb-8">
-            <h1 className="mono-title text-2xl mb-2">SKIFF MAIL CLONE</h1>
-            <p className="mono-text-small">End-to-end encrypted email with Web3 authentication</p>
+      <div className="bg-card border rounded-lg p-6">
+        <div className="flex gap-4">
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-24 w-24 [&_svg]:!w-16 [&_svg]:!h-16"
+            disabled={true}
+          >
+            <WalletIcon id="phantom" variant="branded" size="64" className="w-16 h-16" />
+          </Button>
+          
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-24 w-24 [&_svg]:!w-16 [&_svg]:!h-16"
+            disabled={true}
+          >
+            <WalletIcon id="metamask" variant="branded" size="64" className="w-16 h-16" />
+          </Button>
+          
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-24 w-24 [&_svg]:!w-16 [&_svg]:!h-16"
+            disabled={true}
+          >
+            <WalletIcon id="coinbase" variant="branded" size="64" className="w-16 h-16" />
+          </Button>
+          
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-24 w-24 [&_svg]:!w-16 [&_svg]:!h-16"
+            disabled={true}
+          >
+            <WalletIcon id="walletconnect" variant="branded" size="64" className="w-16 h-16" />
+          </Button>
+        </div>
+        
+        {error && (
+          <div className="mt-4 p-3 border border-destructive rounded-md">
+            <p className="text-sm text-destructive text-center">
+              {error}
+            </p>
           </div>
-
-          {/* Connection Status */}
-          {!isConnected ? (
-            <div className="space-y-4">
-              <h2 className="mono-title">Connect Wallet</h2>
-              <p className="mono-text-small mb-6">
-                Connect your wallet to access encrypted email
-              </p>
-              
-              <div className="space-y-2">
-                {connectors.map((connector) => (
-                  <button
-                    key={connector.uid}
-                    onClick={() => connect({ connector })}
-                    className="mono-button w-full"
-                    disabled={!connector.available}
-                  >
-                    {connector.name}
-                    {!connector.available && ' (unavailable)'}
-                  </button>
-                ))}
-              </div>
-
-              {connectError && (
-                <div className="mt-4 p-3 border border-destructive">
-                  <p className="mono-text-small text-destructive">
-                    {connectError.message}
-                  </p>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <h2 className="mono-title">Wallet Connected</h2>
-              <div className="p-3 border border-border">
-                <p className="mono-text-small break-all">{address}</p>
-              </div>
-              
-              <div className="space-y-2">
-                <button
-                  onClick={handleSiweAuth}
-                  disabled={isLoading}
-                  className="mono-button primary w-full"
-                >
-                  {isLoading ? 'Authenticating...' : 'Sign In with Ethereum'}
-                </button>
-                
-                <button
-                  onClick={() => disconnect()}
-                  className="mono-button w-full"
-                >
-                  Disconnect Wallet
-                </button>
-              </div>
-
-              {error && (
-                <div className="mt-4 p-3 border border-destructive">
-                  <p className="mono-text-small text-destructive">
-                    {error}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="mt-8 text-center">
-          <p className="mono-text-small">
-            Powered by TweetNaCl.js encryption
-          </p>
-          <p className="mono-text-small">
-            Your keys, your data
-          </p>
-        </div>
+        )}
       </div>
     </div>
   );
