@@ -25,6 +25,9 @@ export default function LoginPage() {
       <div className="flex items-center justify-center min-h-screen">
         <Card className="w-full max-w-md">
           <CardContent className="p-6">
+            <h1 className="text-2xl font-semibold text-center mb-6">
+              Welcome to blanc
+            </h1>
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1 h-14">
                 <PhantomIcon className="size-8 rounded-md" />
