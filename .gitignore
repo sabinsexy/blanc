@@ -46,6 +46,3 @@ next-env.d.ts
 !.env.example
 
 /app/generated/prisma
-/apps/web/.next
-
-CLAUDE.md

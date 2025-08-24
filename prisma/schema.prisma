@@ -15,36 +15,18 @@ datasource db {
 }
 
 model User {
-  id                String          @id @default(cuid())
-  walletAddress     String          @unique
-  
-  // Crypto keys (like Skiff)
-  publicKey         String?         // NaCl box public key
-  signingPublicKey  String?         // NaCl sign public key
-  encryptedUserData String?         // Encrypted private keys + settings
-  
-  // SRP fields (modified for wallet auth)
-  srpSalt          String?
-  srpVerifier      String?
-  
-  // Legacy fields for better-auth compatibility
-  name           String?
-  email          String?
-  emailVerified  Boolean?
+  id             String          @id
+  name           String
+  // email          String
+  // emailVerified  Boolean
   image          String?
-  
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  
-  // Relationships
+  createdAt      DateTime
+  updatedAt      DateTime
   sessions       Session[]
   accounts       Account[]
-  emails         Email[]
-  folders        Folder[]
-  aliases        Alias[]
-  walletAddresses WalletAddress[]
+  walletaddresss WalletAddress[]
 
-  @@unique([email])
+  // @@unique([email])
   @@map("user")
 }
 
@@ -75,7 +57,7 @@ model Account {
   accessTokenExpiresAt  DateTime?
   refreshTokenExpiresAt DateTime?
   scope                 String?
-  password              String?
+  // password              String?
   createdAt             DateTime
   updatedAt             DateTime
 
@@ -93,86 +75,14 @@ model Verification {
   @@map("verification")
 }
 
-model Email {
-  id               String    @id @default(cuid())
-  userId           String
-  
-  // Encrypted with symmetric key
-  encryptedData    String    // Subject, body, from, to, etc.
-  encryptedSessionKey String // Symmetric key encrypted with user's public key
-  
-  // R2 storage for large content
-  r2BlobKey        String?   
-  
-  // Unencrypted metadata for queries
-  threadId         String?
-  timestamp        DateTime  @default(now())
-  size             Int       @default(0)
-  isRead           Boolean   @default(false)
-  isStarred        Boolean   @default(false)
-  folderId         String?
-  
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  folder           Folder?   @relation(fields: [folderId], references: [id])
-  attachments      Attachment[]
-  
-  @@index([userId, timestamp])
-  @@index([threadId])
-  @@map("email")
-}
-
-model Attachment {
-  id               String    @id @default(cuid())
-  emailId          String
-  
-  // Encrypted metadata
-  encryptedMetadata String   // filename, mimeType, size
-  
-  // R2 storage
-  r2BlobKey        String
-  size             Int
-  
-  email            Email     @relation(fields: [emailId], references: [id], onDelete: Cascade)
-  
-  @@map("attachment")
-}
-
-model Folder {
-  id        String   @id @default(cuid())
-  userId    String
-  name      String
-  type      String   // inbox, sent, drafts, trash, custom
-  color     String?
-  sortOrder Int      @default(0)
-  
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  emails    Email[]
-  
-  @@unique([userId, name])
-  @@map("folder")
-}
-
-model Alias {
-  id            String   @id @default(cuid())
-  userId        String
-  address       String   @unique
-  displayName   String?
-  isDefault     Boolean  @default(false)
-  encryptedKeys String?  // Per-alias encryption keys
-  
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@map("alias")
-}
-
 model WalletAddress {
-  id        String   @id @default(cuid())
+  id        String   @id
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  address   String   @unique
+  address   String
   chainId   Int
-  isPrimary Boolean  @default(false)
-  createdAt DateTime @default(now())
+  isPrimary Boolean?
+  createdAt DateTime
 
   @@map("walletAddress")
 }
