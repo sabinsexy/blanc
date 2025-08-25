@@ -15,16 +15,17 @@ datasource db {
 }
 
 model User {
-  id             String          @id
-  name           String
+  id               String              @id
+  name             String
   // email          String
   // emailVerified  Boolean
-  image          String?
-  createdAt      DateTime
-  updatedAt      DateTime
-  sessions       Session[]
-  accounts       Account[]
-  walletaddresss WalletAddress[]
+  image            String?
+  createdAt        DateTime
+  updatedAt        DateTime
+  sessions         Session[]
+  accounts         Account[]
+  walletaddresss   WalletAddress[]
+  encryptedUserKeys EncryptedUserKeys?
 
   // @@unique([email])
   @@map("user")
@@ -85,4 +86,23 @@ model WalletAddress {
   createdAt DateTime
 
   @@map("walletAddress")
+}
+
+model EncryptedUserKeys {
+  id                     String   @id @default(cuid())
+  userId                 String   @unique
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  encryptedPrivateKeys   String   @db.Text
+  walletEncryptedSecret  String   @db.Text
+  salt                   String
+  nonce                  String
+  
+  encryptionPublicKey    String
+  signingPublicKey       String
+  
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  
+  @@map("encrypted_user_keys")
 }

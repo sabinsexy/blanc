@@ -3,8 +3,8 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import prisma from "./prisma";
 import { siwe } from "better-auth/plugins";
 import { generateRandomString } from "better-auth/crypto";
-import { verifyMessage, createPublicClient, http } from "viem";
-import { mainnet } from "viem/chains";
+import { verifyMessage } from "wagmi/actions";
+import { wagmiConfig } from "./wagmi";
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
@@ -14,22 +14,22 @@ export const auth = betterAuth({
     enabled: false,
   },
   plugins: [
+    // In auth.ts, ensure your SIWE config matches:
     siwe({
-      domain: "myapp.com",
-      emailDomainName: "myapp.com",
-      anonymous: false,
+      domain: process.env.NEXTAUTH_URL || "localhost:3000",
+      // Remove emailDomainName if not using email
       getNonce: async () => {
-        // Generate a cryptographically secure random nonce
         return generateRandomString(32);
       },
       verifyMessage: async ({ message, signature, address }) => {
         try {
-          // Verify the signature using viem (recommended)
-          const isValid = await verifyMessage({
+          console.log({ message, signature, address });
+          const isValid = await verifyMessage(wagmiConfig, {
             address: address as `0x${string}`,
             message,
             signature: signature as `0x${string}`,
           });
+          console.log("Verification result:", isValid);
           return isValid;
         } catch (error) {
           console.error("SIWE verification failed:", error);
