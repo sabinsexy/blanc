@@ -1,18 +1,34 @@
 // ============================================
-// COMPLETE SKIFF-CRYPTO REPLACEMENT
-// Same algorithms, same security, no WebAssembly
+// SIGNATURE-BASED KEY DERIVATION WITH TWEETNACL
 // ============================================
 
-import nacl from 'tweetnacl';
-import naclUtil from 'tweetnacl-util';
-import { scrypt } from '@noble/hashes/scrypt';
-import { hkdf } from '@noble/hashes/hkdf';
-import { sha256 } from '@noble/hashes/sha256';
+import * as nacl from 'tweetnacl';
+import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
+import hkdf from 'futoin-hkdf';
+import { fromByteArray } from 'base64-js';
 
-// ============================================
-// TYPE DEFINITIONS (Match Skiff-Crypto)
-// ============================================
+// Types
+export interface KeyPair {
+  publicKey: string;  // base64
+  privateKey: string; // base64
+}
 
+export interface EncryptedPayload {
+  ciphertext: string; // base64
+  nonce: string;      // base64
+}
+
+export interface DerivedKeys {
+  masterKey: string;        // base64
+  encryptionKey: string;    // base64
+}
+
+export interface UserKeys {
+  encryptionKeyPair: KeyPair;
+  signingKeyPair: KeyPair;
+}
+
+// Legacy interfaces for backward compatibility
 export interface GeneratePublicPrivateKeyPairResult {
   publicKey: string;
   privateKey: string;
@@ -27,267 +43,351 @@ export interface EncryptedDataPayload {
   };
 }
 
+// Constants from Skiff implementation with HKDF
+const HKDF_LENGTH = 32;
+
+enum HkdfInfo {
+  PRIVATE_KEYS = 'PRIVATE_KEYS',
+}
+
 // ============================================
-// KEY GENERATION
+// SIGNATURE CRYPTO CLASS
 // ============================================
 
+export class SignatureCrypto {
+  private initialized: boolean = false;
+
+  /**
+   * Initialize crypto
+   */
+  async init(): Promise<void> {
+    this.initialized = true;
+  }
+
+  private ensureInit() {
+    if (!this.initialized) {
+      throw new Error("SignatureCrypto not initialized. Call init() first.");
+    }
+  }
+
+  /**
+   * Generate Curve25519 keypair for encryption
+   */
+  generateEncryptionKeyPair(): KeyPair {
+    this.ensureInit();
+    const keypair = nacl.box.keyPair();
+    return {
+      publicKey: encodeBase64(keypair.publicKey),
+      privateKey: encodeBase64(keypair.secretKey),
+    };
+  }
+
+  /**
+   * Generate Ed25519 keypair for signing
+   */
+  generateSigningKeyPair(): KeyPair {
+    this.ensureInit();
+    const keypair = nacl.sign.keyPair();
+    return {
+      publicKey: encodeBase64(keypair.publicKey),
+      privateKey: encodeBase64(keypair.secretKey),
+    };
+  }
+
+  /**
+   * Create key from signature using HKDF (adapted from Skiff)
+   */
+  createKeyFromSignature(signature: string, salt: string): string {
+    this.ensureInit();
+    
+    const privateKey = hkdf(signature, HKDF_LENGTH, {
+      salt,
+      info: 'MASTER_KEY',
+      hash: 'SHA-256'
+    });
+    
+    return fromByteArray(privateKey);
+  }
+
+  /**
+   * Create signature-derived secret using HKDF (adapted from Skiff)
+   */
+  createSignatureDerivedSecret(masterSecret: string, salt: string): string {
+    this.ensureInit();
+    
+    const privateKey = hkdf(masterSecret, HKDF_LENGTH, {
+      salt,
+      info: HkdfInfo.PRIVATE_KEYS,
+      hash: 'SHA-256'
+    });
+    
+    return fromByteArray(privateKey);
+  }
+
+  /**
+   * Derive encryption keys from wallet signature using HKDF
+   */
+  deriveKeysFromSignature(
+    signature: string,
+    masterKeySalt?: string,
+    encryptionKeySalt?: string
+  ): {
+    keys: DerivedKeys;
+    masterKeySalt: string;
+    encryptionKeySalt: string;
+  } {
+    this.ensureInit();
+
+    // Generate or use provided salts
+    const masterSaltString = masterKeySalt || encodeBase64(nacl.randomBytes(16));
+    const encryptionSaltString = encryptionKeySalt || encodeBase64(nacl.randomBytes(32));
+
+    // Step 1: Create master key from signature using HKDF
+    const masterKey = this.createKeyFromSignature(signature, masterSaltString);
+
+    // Step 2: Derive encryption key using HKDF with different context
+    const encryptionKey = this.createSignatureDerivedSecret(masterKey, encryptionSaltString);
+
+    return {
+      keys: {
+        masterKey,
+        encryptionKey,
+      },
+      masterKeySalt: masterSaltString,
+      encryptionKeySalt: encryptionSaltString,
+    };
+  }
+
+  /**
+   * Generate random symmetric key (adapted from Skiff)
+   */
+  generateSymmetricKey(): string {
+    this.ensureInit();
+    const key = nacl.randomBytes(32);
+    return encodeBase64(key);
+  }
+
+  /**
+   * Encrypt with XSalsa20-Poly1305 (NaCl secretbox) - adapted from Skiff
+   */
+  encryptSymmetric(
+    plaintext: string,
+    key: string // base64
+  ): EncryptedPayload {
+    this.ensureInit();
+    
+    const keyBytes = decodeBase64(key);
+    const messageBytes = new TextEncoder().encode(plaintext);
+    
+    // Generate 24-byte nonce
+    const nonce = nacl.randomBytes(24);
+    
+    // Encrypt using secretbox (XSalsa20-Poly1305)
+    const ciphertext = nacl.secretbox(messageBytes, nonce, keyBytes);
+    
+    if (!ciphertext) {
+      throw new Error('Failed to encrypt message');
+    }
+
+    return {
+      ciphertext: encodeBase64(ciphertext),
+      nonce: encodeBase64(nonce),
+    };
+  }
+
+  /**
+   * Decrypt with XSalsa20-Poly1305 - adapted from Skiff
+   */
+  decryptSymmetric(
+    encrypted: EncryptedPayload,
+    key: string // base64
+  ): string {
+    this.ensureInit();
+    
+    const keyBytes = decodeBase64(key);
+    const ciphertextBytes = decodeBase64(encrypted.ciphertext);
+    const nonceBytes = decodeBase64(encrypted.nonce);
+
+    // Decrypt using secretbox
+    const decrypted = nacl.secretbox.open(ciphertextBytes, nonceBytes, keyBytes);
+    
+    if (!decrypted) {
+      throw new Error('Failed to decrypt message');
+    }
+
+    return new TextDecoder().decode(decrypted);
+  }
+
+  /**
+   * Asymmetric encryption with Curve25519 (NaCl box) - adapted from Skiff
+   */
+  encryptAsymmetric(
+    plaintext: string,
+    recipientPublicKey: string, // base64
+    senderPrivateKey: string // base64
+  ): EncryptedPayload {
+    this.ensureInit();
+    
+    const messageBytes = new TextEncoder().encode(plaintext);
+    const recipientPubBytes = decodeBase64(recipientPublicKey);
+    const senderPrivBytes = decodeBase64(senderPrivateKey);
+
+    // Generate nonce
+    const nonce = nacl.randomBytes(24);
+
+    // Encrypt using box (Curve25519 + XSalsa20-Poly1305)
+    const ciphertext = nacl.box(messageBytes, nonce, recipientPubBytes, senderPrivBytes);
+    
+    if (!ciphertext) {
+      throw new Error('Failed to encrypt message asymmetrically');
+    }
+
+    return {
+      ciphertext: encodeBase64(ciphertext),
+      nonce: encodeBase64(nonce),
+    };
+  }
+
+  /**
+   * Asymmetric decryption - adapted from Skiff
+   */
+  decryptAsymmetric(
+    encrypted: EncryptedPayload,
+    senderPublicKey: string, // base64
+    recipientPrivateKey: string // base64
+  ): string {
+    this.ensureInit();
+    
+    const ciphertextBytes = decodeBase64(encrypted.ciphertext);
+    const nonceBytes = decodeBase64(encrypted.nonce);
+    const senderPubBytes = decodeBase64(senderPublicKey);
+    const recipientPrivBytes = decodeBase64(recipientPrivateKey);
+
+    const decrypted = nacl.box.open(ciphertextBytes, nonceBytes, senderPubBytes, recipientPrivBytes);
+    
+    if (!decrypted) {
+      throw new Error('Failed to decrypt message asymmetrically');
+    }
+
+    return new TextDecoder().decode(decrypted);
+  }
+}
+
+// ============================================
+// LEGACY COMPATIBILITY FUNCTIONS
+// ============================================
+
+const cryptoInstance = new SignatureCrypto();
+
 /**
- * Generate X25519/Curve25519 keypair for encryption
- * Equivalent to skiff-crypto's generatePublicPrivateKeyPair
+ * Generate symmetric key - adapted from Skiff
  */
-export function generatePublicPrivateKeyPair(): GeneratePublicPrivateKeyPairResult {
-  const keyPair = nacl.box.keyPair();
+export async function generateSymmetricKey(): Promise<string> {
+  await cryptoInstance.init();
+  return cryptoInstance.generateSymmetricKey();
+}
+
+/**
+ * Legacy function for backward compatibility
+ */
+export async function generatePublicPrivateKeyPair(): Promise<GeneratePublicPrivateKeyPairResult> {
+  await cryptoInstance.init();
+  const keyPair = cryptoInstance.generateEncryptionKeyPair();
+  return keyPair;
+}
+
+/**
+ * Legacy function for backward compatibility
+ */
+export async function generateSigningKeyPair(): Promise<GeneratePublicPrivateKeyPairResult> {
+  await cryptoInstance.init();
+  const keyPair = cryptoInstance.generateSigningKeyPair();
+  return keyPair;
+}
+
+/**
+ * Legacy symmetric encryption - adapted from Skiff
+ */
+export async function encryptSymmetric(
+  plaintext: string,
+  key: string,
+  _aad?: string // Additional authenticated data (not used in TweetNaCl)
+): Promise<EncryptedDataPayload> {
+  await cryptoInstance.init();
+  const result = cryptoInstance.encryptSymmetric(plaintext, key);
   return {
-    publicKey: naclUtil.encodeBase64(keyPair.publicKey),
-    privateKey: naclUtil.encodeBase64(keyPair.secretKey),
+    ciphertext: result.ciphertext,
+    nonce: result.nonce,
+    metadata: {
+      nonce: result.nonce,
+    },
   };
 }
 
 /**
- * Generate Ed25519 keypair for signing
+ * Legacy symmetric decryption - adapted from Skiff
  */
-export function generateSigningKeyPair(): GeneratePublicPrivateKeyPairResult {
-  const keyPair = nacl.sign.keyPair();
-  return {
-    publicKey: naclUtil.encodeBase64(keyPair.publicKey),
-    privateKey: naclUtil.encodeBase64(keyPair.secretKey),
-  };
+export async function decryptSymmetric(
+  encrypted: EncryptedDataPayload,
+  key: string,
+  _aad?: string // Additional authenticated data (not used in TweetNaCl)
+): Promise<string> {
+  await cryptoInstance.init();
+  return cryptoInstance.decryptSymmetric(
+    {
+      ciphertext: encrypted.ciphertext,
+      nonce: encrypted.nonce,
+    },
+    key
+  );
 }
 
-// ============================================
-// KEY DERIVATION (Argon2id replacement with scrypt)
-// ============================================
+/**
+ * Create key from signature (adapted from Skiff's createKeyFromSecret)
+ */
+export async function createKeyFromSignature(
+  signature: string,
+  salt: string
+): Promise<string> {
+  await cryptoInstance.init();
+  return cryptoInstance.createKeyFromSignature(signature, salt);
+}
 
 /**
- * Derive key from password using scrypt (similar security to Argon2id)
- * Equivalent to skiff-crypto's createKeyFromSecret
+ * Create signature-derived secret (adapted from Skiff's createPasswordDerivedSecret)
+ */
+export async function createSignatureDerivedSecret(
+  masterSecret: string,
+  salt: string
+): Promise<string> {
+  await cryptoInstance.init();
+  return cryptoInstance.createSignatureDerivedSecret(masterSecret, salt);
+}
+
+/**
+ * Legacy key derivation placeholder
  */
 export async function createKeyFromSecret(
   secret: string,
   salt: string
 ): Promise<string> {
-  const saltBytes = naclUtil.decodeUTF8(salt);
-  const secretBytes = naclUtil.decodeUTF8(secret);
-  
-  // scrypt with high security parameters (similar to Argon2id)
-  // N=2^16 for high memory cost (64MB)
-  // r=8, p=1 are standard secure values
-  const derivedKey = await scrypt(secretBytes, saltBytes, {
-    N: 2 ** 16,  // CPU/memory cost (higher than default for security)
-    r: 8,        // Block size
-    p: 1,        // Parallelization
-    dkLen: 32    // 256-bit output
-  });
-  
-  return naclUtil.encodeBase64(derivedKey);
+  // Redirect to signature-based implementation
+  return createKeyFromSignature(secret, salt);
 }
 
 /**
- * Further derive key using HKDF for specific purposes
- * Equivalent to skiff-crypto's createPasswordDerivedSecret
+ * Legacy key derivation placeholder
  */
 export async function createPasswordDerivedSecret(
   masterSecret: string,
   context: string
 ): Promise<string> {
-  const masterBytes = naclUtil.decodeBase64(masterSecret);
-  
-  // HKDF with SHA-256 for key expansion
-  const derivedKey = hkdf(
-    sha256,
-    masterBytes,
-    undefined,  // No salt (masterSecret is already derived)
-    context,    // Info/context string
-    32         // 256-bit output
-  );
-  
-  return naclUtil.encodeBase64(derivedKey);
-}
-
-// ============================================
-// SYMMETRIC ENCRYPTION (XSalsa20-Poly1305)
-// ============================================
-
-/**
- * Encrypt with symmetric key using NaCl secretbox
- * Equivalent to skiff-crypto's encryptSymmetric
- */
-export function encryptSymmetric(
-  plaintext: string,
-  key: string,
-  aad: string // Additional authenticated data (used as context)
-): EncryptedDataPayload {
-  const keyBytes = naclUtil.decodeBase64(key);
-  
-  // Ensure key is 32 bytes
-  if (keyBytes.length !== 32) {
-    throw new Error('Key must be 32 bytes');
-  }
-  
-  // Generate random nonce
-  const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
-  
-  // Combine AAD with plaintext for authenticated encryption
-  const message = `${aad}:${plaintext}`;
-  const messageBytes = naclUtil.decodeUTF8(message);
-  
-  // Encrypt using NaCl secretbox (XSalsa20-Poly1305)
-  const ciphertext = nacl.secretbox(messageBytes, nonce, keyBytes);
-  
-  return {
-    ciphertext: naclUtil.encodeBase64(ciphertext),
-    nonce: naclUtil.encodeBase64(nonce),
-    metadata: {
-      nonce: naclUtil.encodeBase64(nonce),
-    },
-  };
-}
-
-/**
- * Decrypt with symmetric key using NaCl secretbox
- * Equivalent to skiff-crypto's decryptSymmetric
- */
-export function decryptSymmetric(
-  encrypted: EncryptedDataPayload,
-  key: string,
-  aad: string
-): string {
-  const keyBytes = naclUtil.decodeBase64(key);
-  const ciphertextBytes = naclUtil.decodeBase64(encrypted.ciphertext);
-  const nonceBytes = naclUtil.decodeBase64(encrypted.nonce);
-  
-  // Decrypt using NaCl secretbox
-  const decrypted = nacl.secretbox.open(ciphertextBytes, nonceBytes, keyBytes);
-  
-  if (!decrypted) {
-    throw new Error('Decryption failed');
-  }
-  
-  // Verify and remove AAD
-  const message = naclUtil.encodeUTF8(decrypted);
-  const expectedPrefix = `${aad}:`;
-  
-  if (!message.startsWith(expectedPrefix)) {
-    throw new Error('Authentication failed');
-  }
-  
-  return message.slice(expectedPrefix.length);
-}
-
-// ============================================
-// ASYMMETRIC ENCRYPTION (X25519 + XSalsa20-Poly1305)
-// ============================================
-
-/**
- * Encrypt with public key using NaCl box
- * Equivalent to skiff-crypto's encryptAsymmetric
- */
-export function encryptAsymmetric(
-  senderPrivateKey: string,
-  recipientPublicKey: string,
-  plaintext: string
-): EncryptedDataPayload {
-  const senderPrivKeyBytes = naclUtil.decodeBase64(senderPrivateKey);
-  const recipientPubKeyBytes = naclUtil.decodeBase64(recipientPublicKey);
-  const messageBytes = naclUtil.decodeUTF8(plaintext);
-  
-  // Generate nonce
-  const nonce = nacl.randomBytes(nacl.box.nonceLength);
-  
-  // Encrypt using NaCl box (X25519 + XSalsa20-Poly1305)
-  const ciphertext = nacl.box(
-    messageBytes,
-    nonce,
-    recipientPubKeyBytes,
-    senderPrivKeyBytes
-  );
-  
-  return {
-    ciphertext: naclUtil.encodeBase64(ciphertext),
-    nonce: naclUtil.encodeBase64(nonce),
-    metadata: {
-      nonce: naclUtil.encodeBase64(nonce),
-    },
-  };
-}
-
-/**
- * Decrypt with private key using NaCl box
- * Equivalent to skiff-crypto's decryptAsymmetric
- */
-export function decryptAsymmetric(
-  recipientPrivateKey: string,
-  senderPublicKey: string,
-  encrypted: EncryptedDataPayload
-): string {
-  const recipientPrivKeyBytes = naclUtil.decodeBase64(recipientPrivateKey);
-  const senderPubKeyBytes = naclUtil.decodeBase64(senderPublicKey);
-  const ciphertextBytes = naclUtil.decodeBase64(encrypted.ciphertext);
-  const nonceBytes = naclUtil.decodeBase64(encrypted.nonce);
-  
-  // Decrypt using NaCl box
-  const decrypted = nacl.box.open(
-    ciphertextBytes,
-    nonceBytes,
-    senderPubKeyBytes,
-    recipientPrivKeyBytes
-  );
-  
-  if (!decrypted) {
-    throw new Error('Decryption failed');
-  }
-  
-  return naclUtil.encodeUTF8(decrypted);
-}
-
-// ============================================
-// SIGNING OPERATIONS (Ed25519)
-// ============================================
-
-/**
- * Sign a message with Ed25519
- */
-export function signMessage(
-  message: string,
-  privateKey: string
-): string {
-  const messageBytes = naclUtil.decodeUTF8(message);
-  const privateKeyBytes = naclUtil.decodeBase64(privateKey);
-  
-  const signature = nacl.sign.detached(messageBytes, privateKeyBytes);
-  return naclUtil.encodeBase64(signature);
-}
-
-/**
- * Verify a signature with Ed25519
- */
-export function verifySignature(
-  message: string,
-  signature: string,
-  publicKey: string
-): boolean {
-  const messageBytes = naclUtil.decodeUTF8(message);
-  const signatureBytes = naclUtil.decodeBase64(signature);
-  const publicKeyBytes = naclUtil.decodeBase64(publicKey);
-  
-  return nacl.sign.detached.verify(messageBytes, signatureBytes, publicKeyBytes);
-}
-
-// ============================================
-// UTILITY FUNCTIONS
-// ============================================
-
-/**
- * Generate a random symmetric key
- */
-export function generateSymmetricKey(): string {
-  const key = nacl.randomBytes(32); // 256-bit key
-  return naclUtil.encodeBase64(key);
+  // Redirect to signature-based implementation
+  return createSignatureDerivedSecret(masterSecret, context);
 }
 
 /**
  * Convert string to encrypted payload
- * Equivalent to skiff-crypto's stringToEncryptedDataPayload
  */
 export function stringToEncryptedDataPayload(str: string): EncryptedDataPayload {
   const parsed = JSON.parse(str);
@@ -300,7 +400,6 @@ export function stringToEncryptedDataPayload(str: string): EncryptedDataPayload 
 
 /**
  * Convert encrypted payload to string
- * Equivalent to skiff-crypto's encryptedDataPayloadToString
  */
 export function encryptedDataPayloadToString(payload: EncryptedDataPayload): string {
   return JSON.stringify({
@@ -309,3 +408,6 @@ export function encryptedDataPayloadToString(payload: EncryptedDataPayload): str
     metadata: payload.metadata,
   });
 }
+
+// Export the crypto instance for direct use
+export { cryptoInstance as crypto };

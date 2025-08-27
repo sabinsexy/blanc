@@ -1,26 +1,18 @@
 import { createAuthClient } from "better-auth/client";
 import { siweClient } from "better-auth/client/plugins";
 import type { Address } from "viem";
-import naclUtil from "tweetnacl-util";
-import * as crypto from "./crypto";
+import { SignatureCrypto, type UserKeys } from "./crypto";
 
 const client = createAuthClient({
   baseURL: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
   plugins: [siweClient()],
 });
 
-interface UserKeys {
-  encryptionPublicKey: string;
-  encryptionPrivateKey: string;
-  signingPublicKey: string;
-  signingPrivateKey: string;
-}
-
 interface EncryptedKeysData {
   encryptedPrivateKeys: string;
-  walletEncryptedSecret: string;
-  salt: string;
-  nonce: string;
+  encryptionNonce: string;
+  masterKeySalt: string;
+  encryptionKeySalt: string;
   publicKeys: {
     encryptionPublicKey: string;
     signingPublicKey: string;
@@ -34,6 +26,15 @@ export class WagmiAuthManager {
   private userKeys: UserKeys | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private session: any = null;
+  private crypto: SignatureCrypto;
+
+  constructor() {
+    this.crypto = new SignatureCrypto();
+  }
+
+  async init() {
+    await this.crypto.init();
+  }
 
   /**
    * Initialize with wagmi wallet client
@@ -45,11 +46,13 @@ export class WagmiAuthManager {
   }
 
   /**
-   * Authenticate with SIWE and setup/load keys
+   * Two-step authentication:
+   * 1. SIWE authentication for session management (regular SIWE signature)
+   * 2. Key derivation using deterministic challenge (separate signature for consistent keys)
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async authenticate(
     chainId: number
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ): Promise<{ session: any; keys: UserKeys }> {
     if (!this.walletClient || !this.address) {
       throw new Error("Wallet not set. Call setWalletClient first.");
@@ -57,61 +60,84 @@ export class WagmiAuthManager {
 
     console.log("Starting SIWE authentication...");
 
-    // Generate SIWE nonce
-    const { data: nonceData } = await client.siwe.nonce({
-      walletAddress: this.address,
-      chainId: 1,
-    });
-    if (!nonceData?.nonce) {
-      throw new Error("Failed to get nonce for SIWE");
-    }
+    // Initialize crypto
+    await this.init();
 
-    // Create SIWE message
-    const domain = window.location.host;
-    const origin = window.location.origin;
-    const message = `${domain} wants you to sign in with your Ethereum account:
-${this.address}
-
-I accept the Terms of Service: ${origin}
-
-URI: ${origin}
-Version: 1
-Chain ID: ${chainId}
-Nonce: ${nonceData.nonce}
-Issued At: ${new Date().toISOString()}`;
-
-    // Sign the message with the wallet
-    const signature = await this.walletClient.signMessage({
-      account: this.address,
-      message,
-    });
-
-    // Verify with better-auth
-    const { data: authData, error } = await client.siwe.verify({
-      message,
-      signature,
+    // Step 1: Get nonce for SIWE authentication
+    const { data: nonceData, error: nonceError } = await client.siwe.nonce({
       walletAddress: this.address,
       chainId,
     });
 
-    if (error || !authData) {
-      throw new Error(
-        `SIWE authentication failed: ${error?.message || "Unknown error"}`
-      );
+    if (nonceError || !nonceData?.nonce) {
+      throw new Error(`Failed to get SIWE nonce: ${nonceError?.message || 'Unknown error'}`);
+    }
+
+    // Step 2: Create SIWE message (using exact format expected by better-auth)
+    const domain = 'localhost:3000'; // Match the domain in auth.ts
+    const uri = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const issuedAt = new Date().toISOString();
+    
+    const siweMessage = `${domain} wants you to sign in with your Ethereum account:
+${this.address}
+
+I accept the Terms of Service: ${uri}
+
+URI: ${uri}
+Version: 1
+Chain ID: ${chainId}
+Nonce: ${nonceData.nonce}
+Issued At: ${issuedAt}`;
+
+    // Step 3: Sign the SIWE message
+    const siweSignature = await this.walletClient.signMessage({
+      account: this.address,
+      message: siweMessage,
+    });
+
+    // Step 4: Verify the SIWE signature
+    const { data: authData, error: authError } = await client.siwe.verify({
+      message: siweMessage,
+      signature: siweSignature,
+      walletAddress: this.address,
+      chainId,
+    });
+
+    if (authError || !authData?.user) {
+      throw new Error(`SIWE authentication failed: ${authError?.message || 'Unknown error'}`);
     }
 
     this.session = authData;
     console.log("SIWE authentication successful");
 
-    // Check if user needs key setup
+    // Step 2: Check if user needs key setup
     const requiresKeySetup = await this.checkRequiresKeySetup();
 
+    // Step 3: Get deterministic challenge for key derivation (separate from SIWE auth)
+    const challengeResponse = await fetch('/api/auth/get-challenge', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        walletAddress: this.address,
+      }),
+    });
+
+    const responseData = await challengeResponse.json() as { challenge: string };
+    const { challenge } = responseData;
+
+    // Step 4: Sign the key derivation challenge (different from SIWE signature)
+    const keyDerivationSignature = await this.walletClient.signMessage({
+      account: this.address,
+      message: challenge,
+    });
+
+    // Step 5: Setup or load keys using the key derivation signature
     if (requiresKeySetup) {
-      console.log("New user - setting up encryption keys...");
-      await this.setupNewUserKeys();
+      await this.setupNewUserKeys(keyDerivationSignature);
     } else {
-      console.log("Existing user - loading keys...");
-      await this.loadExistingUserKeys();
+      await this.loadExistingUserKeys(keyDerivationSignature);
     }
 
     return {
@@ -126,9 +152,7 @@ Issued At: ${new Date().toISOString()}`;
   private async checkRequiresKeySetup(): Promise<boolean> {
     try {
       const response = await fetch("/api/auth/encrypted-keys", {
-        headers: {
-          Authorization: `Bearer ${this.session?.token}`,
-        },
+        credentials: 'include', // Use session cookies instead of Bearer token
       });
       return response.status === 404; // Keys not found
     } catch {
@@ -139,116 +163,100 @@ Issued At: ${new Date().toISOString()}`;
   /**
    * Setup encryption for new user
    */
-  private async setupNewUserKeys(): Promise<void> {
-    if (!this.walletClient || !this.address) {
-      throw new Error("Wallet not connected");
-    }
+  private async setupNewUserKeys(signature: string): Promise<void> {
+    // Derive encryption key from signature
+    const { keys, masterKeySalt, encryptionKeySalt } = await this.crypto.deriveKeysFromSignature(signature);
 
-    // Generate keypairs using our replacement crypto
-    const encryptionKeypair = crypto.generatePublicPrivateKeyPair();
-    const signingKeypair = crypto.generateSigningKeyPair();
+    // Generate keypairs
+    const encryptionKeyPair = this.crypto.generateEncryptionKeyPair();
+    const signingKeyPair = this.crypto.generateSigningKeyPair();
 
     this.userKeys = {
-      encryptionPublicKey: encryptionKeypair.publicKey,
-      encryptionPrivateKey: encryptionKeypair.privateKey,
-      signingPublicKey: signingKeypair.publicKey,
-      signingPrivateKey: signingKeypair.privateKey,
+      encryptionKeyPair,
+      signingKeyPair,
     };
 
-    // Generate and encrypt root secret
-    const rootSecret = this.generateRootSecret();
-    const salt = this.generateSalt();
-    const derivedKey = await this.deriveSymmetricKey(rootSecret, salt);
-
-    // Encrypt private keys
-    const privateKeyBundle = JSON.stringify({
-      encryptionPrivateKey: this.userKeys.encryptionPrivateKey,
-      signingPrivateKey: this.userKeys.signingPrivateKey,
+    // Prepare private keys for encryption
+    const privateKeysBundle = JSON.stringify({
+      encryptionPrivateKey: encryptionKeyPair.privateKey,
+      signingPrivateKey: signingKeyPair.privateKey,
       metadata: {
         createdAt: new Date().toISOString(),
         walletAddress: this.address,
-      },
+      }
     });
 
-    const encryptedKeys = crypto.encryptSymmetric(
-      privateKeyBundle,
-      derivedKey,
-      "UserPrivateKeys"
+    // Encrypt private keys with derived key
+    const encrypted = this.crypto.encryptSymmetric(
+      privateKeysBundle,
+      keys.encryptionKey
     );
 
-    // Encrypt root secret with wallet
-    const walletEncryptedSecret = await this.encryptWithWallet(rootSecret);
-
     // Send to server
-    const response = await fetch("/api/auth/setup-keys", {
-      method: "POST",
+    const response = await fetch('/api/auth/setup-keys', {
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.session?.token}`,
+        'Content-Type': 'application/json',
       },
+      credentials: 'include', // Use session cookies
       body: JSON.stringify({
-        encryptedPrivateKeys:
-          crypto.encryptedDataPayloadToString(encryptedKeys),
-        walletEncryptedSecret,
-        salt,
-        nonce: encryptedKeys.metadata.nonce || "",
-        encryptionPublicKey: this.userKeys.encryptionPublicKey,
-        signingPublicKey: this.userKeys.signingPublicKey,
+        encryptedPrivateKeys: encrypted.ciphertext,
+        encryptionNonce: encrypted.nonce,
+        masterKeySalt,
+        encryptionKeySalt,
+        encryptionPublicKey: encryptionKeyPair.publicKey,
+        signingPublicKey: signingKeyPair.publicKey,
       }),
     });
 
     if (!response.ok) {
-      throw new Error("Failed to setup keys");
+      throw new Error('Failed to setup keys');
     }
-
-    console.log("Keys successfully stored");
   }
 
   /**
    * Load existing user keys
    */
-  private async loadExistingUserKeys(): Promise<void> {
-    if (!this.walletClient || !this.address) {
-      throw new Error("Wallet not connected");
-    }
-
-    const response = await fetch("/api/auth/encrypted-keys", {
-      headers: {
-        Authorization: `Bearer ${this.session?.token}`,
-      },
+  private async loadExistingUserKeys(signature: string): Promise<void> {
+    // Fetch encrypted keys and salts
+    const response = await fetch('/api/auth/encrypted-keys', {
+      credentials: 'include', // Use session cookies
     });
 
     if (!response.ok) {
-      throw new Error("Failed to fetch keys");
+      throw new Error('Failed to fetch keys');
     }
 
-    const encryptedData: EncryptedKeysData = await response.json();
+    const encryptedData = await response.json() as EncryptedKeysData;
 
-    // Decrypt with wallet
-    const rootSecret = await this.decryptWithWallet(
-      encryptedData.walletEncryptedSecret
-    );
-    const derivedKey = await this.deriveSymmetricKey(
-      rootSecret,
-      encryptedData.salt
+    // Derive same encryption key using stored salts
+    const { keys } = this.crypto.deriveKeysFromSignature(
+      signature,
+      encryptedData.masterKeySalt,
+      encryptedData.encryptionKeySalt
     );
 
-    const decryptedBundle = crypto.decryptSymmetric(
-      crypto.stringToEncryptedDataPayload(encryptedData.encryptedPrivateKeys),
-      derivedKey,
-      "UserPrivateKeys"
+    // Decrypt private keys
+    const decrypted = this.crypto.decryptSymmetric(
+      {
+        ciphertext: encryptedData.encryptedPrivateKeys,
+        nonce: encryptedData.encryptionNonce,
+      },
+      keys.encryptionKey
     );
 
-    const bundle = JSON.parse(decryptedBundle);
+    const bundle = JSON.parse(decrypted);
 
     this.userKeys = {
-      encryptionPublicKey: encryptedData.publicKeys.encryptionPublicKey,
-      encryptionPrivateKey: bundle.encryptionPrivateKey,
-      signingPublicKey: encryptedData.publicKeys.signingPublicKey,
-      signingPrivateKey: bundle.signingPrivateKey,
+      encryptionKeyPair: {
+        publicKey: encryptedData.publicKeys.encryptionPublicKey,
+        privateKey: bundle.encryptionPrivateKey,
+      },
+      signingKeyPair: {
+        publicKey: encryptedData.publicKeys.signingPublicKey,
+        privateKey: bundle.signingPrivateKey,
+      },
     };
-
-    console.log("Keys loaded successfully");
   }
 
   /**
@@ -275,78 +283,21 @@ Issued At: ${new Date().toISOString()}`;
     return this.userKeys;
   }
 
-  // Helper methods
-  private generateRootSecret(): string {
-    const array = new Uint8Array(32);
-    globalThis.crypto.getRandomValues(array);
-    return naclUtil.encodeBase64(array);
-  }
-
-  private generateSalt(): string {
-    const array = new Uint8Array(16);
-    globalThis.crypto.getRandomValues(array);
-    return Buffer.from(array).toString("hex");
-  }
-
-  private async deriveSymmetricKey(
-    secret: string,
-    salt: string
+  // Email encryption example
+  async encryptMessage(
+    message: string,
+    recipientPublicKey: string
   ): Promise<string> {
-    const masterSecret = await crypto.createKeyFromSecret(secret, salt);
-    return await crypto.createPasswordDerivedSecret(
-      masterSecret,
-      "user-keys-encryption"
-    );
-  }
-
-  private async encryptWithWallet(data: string): Promise<string> {
-    if (!this.walletClient || !this.address) {
-      throw new Error("Wallet not connected");
+    if (!this.userKeys) {
+      throw new Error('Keys not loaded');
     }
 
-    const dailyEpoch = Math.floor(Date.now() / 86400000);
-    const message = `Encrypt Keys\nAddress: ${this.address}\nEpoch: ${dailyEpoch}`;
-
-    const signature = await this.walletClient.signMessage({
-      account: this.address,
+    const encrypted = await this.crypto.encryptAsymmetric(
       message,
-    });
-
-    // Use first 32 bytes of signature as key
-    const signatureBytes = naclUtil.decodeBase64(signature.slice(2)); // Remove 0x
-    const encryptionKey = naclUtil.encodeBase64(signatureBytes.slice(0, 32));
-
-    const encrypted = crypto.encryptSymmetric(
-      data,
-      encryptionKey,
-      "WalletSecret"
+      recipientPublicKey,
+      this.userKeys.encryptionKeyPair.privateKey
     );
 
-    return JSON.stringify({
-      encrypted: crypto.encryptedDataPayloadToString(encrypted),
-      message,
-    });
-  }
-
-  private async decryptWithWallet(encryptedData: string): Promise<string> {
-    if (!this.walletClient || !this.address) {
-      throw new Error("Wallet not connected");
-    }
-
-    const { encrypted, message } = JSON.parse(encryptedData);
-
-    const signature = await this.walletClient.signMessage({
-      account: this.address,
-      message,
-    });
-
-    const signatureBytes = naclUtil.decodeBase64(signature.slice(2));
-    const decryptionKey = naclUtil.encodeBase64(signatureBytes.slice(0, 32));
-
-    return crypto.decryptSymmetric(
-      crypto.stringToEncryptedDataPayload(encrypted),
-      decryptionKey,
-      "WalletSecret"
-    );
+    return JSON.stringify(encrypted);
   }
 }

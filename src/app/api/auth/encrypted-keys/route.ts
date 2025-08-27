@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const encryptedKeys = await prisma.encryptedUserKeys.findUnique({
+    const encryptedKeys = await prisma.userEncryptedKeys.findUnique({
       where: { userId: session.user.id },
     });
 
@@ -28,9 +28,9 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       encryptedPrivateKeys: encryptedKeys.encryptedPrivateKeys,
-      walletEncryptedSecret: encryptedKeys.walletEncryptedSecret,
-      salt: encryptedKeys.salt,
-      nonce: encryptedKeys.nonce,
+      encryptionNonce: encryptedKeys.encryptionNonce,
+      masterKeySalt: encryptedKeys.masterKeySalt,
+      encryptionKeySalt: encryptedKeys.encryptionKeySalt,
       publicKeys: {
         encryptionPublicKey: encryptedKeys.encryptionPublicKey,
         signingPublicKey: encryptedKeys.signingPublicKey,

@@ -3,7 +3,7 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import prisma from "./prisma";
 import { siwe } from "better-auth/plugins";
 import { generateRandomString } from "better-auth/crypto";
-import { verifyMessage } from "wagmi/actions";
+import { verifyMessage } from "@wagmi/core";
 import { wagmiConfig } from "./wagmi";
 
 export const auth = betterAuth({
@@ -16,8 +16,7 @@ export const auth = betterAuth({
   plugins: [
     // In auth.ts, ensure your SIWE config matches:
     siwe({
-      domain: process.env.NEXTAUTH_URL || "localhost:3000",
-      // Remove emailDomainName if not using email
+      domain: process.env.NEXT_PUBLIC_APP_URL?.replace(/https?:\/\//, '') || "localhost:3000",
       getNonce: async () => {
         return generateRandomString(32);
       },

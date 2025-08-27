@@ -74,13 +74,13 @@ export function WalletAuth() {
                   <div>
                     <p className="font-medium">Encryption:</p>
                     <code className="break-all text-xs bg-white p-1 rounded">
-                      {userKeys.encryptionPublicKey}
+                      {userKeys.encryptionKeyPair.publicKey}
                     </code>
                   </div>
                   <div>
                     <p className="font-medium">Signing:</p>
                     <code className="break-all text-xs bg-white p-1 rounded">
-                      {userKeys.signingPublicKey}
+                      {userKeys.signingKeyPair.publicKey}
                     </code>
                   </div>
                 </div>

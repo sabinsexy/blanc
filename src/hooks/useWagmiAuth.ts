@@ -1,13 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useAccount, useWalletClient, useChainId } from 'wagmi';
 import { WagmiAuthManager } from '@/lib/wagmi-auth-manager';
-
-interface UserKeys {
-  encryptionPublicKey: string;
-  encryptionPrivateKey: string;
-  signingPublicKey: string;
-  signingPrivateKey: string;
-}
+import type { UserKeys } from '@/lib/crypto';
 
 interface UseWagmiAuthReturn {
   isAuthenticated: boolean;

@@ -15,94 +15,128 @@ datasource db {
 }
 
 model User {
-  id               String              @id
-  name             String
-  // email          String
-  // emailVerified  Boolean
-  image            String?
-  createdAt        DateTime
-  updatedAt        DateTime
-  sessions         Session[]
-  accounts         Account[]
-  walletaddresss   WalletAddress[]
-  encryptedUserKeys EncryptedUserKeys?
+  id                String              @id @default(cuid())
+  name              String
+  email             String
+  emailVerified     Boolean
+  image             String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  
+  // Relationships
+  sessions          Session[]
+  accounts          Account[]
+  walletAddresses   WalletAddress[]
+  encryptedKeys     UserEncryptedKeys?
+  keyDerivationChallenges    KeyDerivationChallenge[]
 
-  // @@unique([email])
+  @@unique([email])
   @@map("user")
 }
 
 model Session {
-  id        String   @id
+  id        String   @id @default(cuid())
+  token     String   @unique
   expiresAt DateTime
-  token     String
-  createdAt DateTime
-  updatedAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   ipAddress String?
   userAgent String?
+  
+  // Relationships
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([token])
   @@map("session")
 }
 
 model Account {
-  id                    String    @id
+  id                    String    @id @default(cuid())
   accountId             String
   providerId            String
-  userId                String
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   accessToken           String?
   refreshToken          String?
   idToken               String?
   accessTokenExpiresAt  DateTime?
   refreshTokenExpiresAt DateTime?
   scope                 String?
-  // password              String?
-  createdAt             DateTime
-  updatedAt             DateTime
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  // Relationships
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("account")
 }
 
 model Verification {
-  id         String    @id
+  id         String    @id @default(cuid())
   identifier String
   value      String
   expiresAt  DateTime
-  createdAt  DateTime?
-  updatedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   @@map("verification")
 }
 
 model WalletAddress {
-  id        String   @id
+  id        String   @id @default(cuid())
+  address   String   @unique
+  chainId   Int
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relationships
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  address   String
-  chainId   Int
-  isPrimary Boolean?
-  createdAt DateTime
 
-  @@map("walletAddress")
+  @@unique([userId, chainId, address])
+  @@map("wallet_addresses")
 }
 
-model EncryptedUserKeys {
-  id                     String   @id @default(cuid())
-  userId                 String   @unique
-  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+// Deterministic challenge for signature-based key derivation
+model KeyDerivationChallenge {
+  id            String    @id @default(cuid())
+  challenge     String    @unique // Deterministic challenge string for consistent key derivation
+  walletAddress String    @unique // One challenge per wallet address
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
   
-  encryptedPrivateKeys   String   @db.Text
-  walletEncryptedSecret  String   @db.Text
-  salt                   String
-  nonce                  String
+  // Relationships
+  userId        String?   // Optional - may not have user yet during signup
+  user          User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  encryptionPublicKey    String
-  signingPublicKey       String
+  @@index([walletAddress])
+  @@map("key_derivation_challenges")
+}
+
+// Encrypted private keys derived from user's signature
+model UserEncryptedKeys {
+  id                    String   @id @default(cuid())
   
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  // Encrypted data
+  encryptedPrivateKeys  String   // XSalsa20-Poly1305 encrypted private key bundle
+  encryptionNonce       String   // Encryption nonce (base64)
   
-  @@map("encrypted_user_keys")
+  // Key derivation parameters
+  masterKeySalt         String   // Salt for master key derivation (base64)
+  encryptionKeySalt     String   // Salt for encryption key derivation (base64)
+  
+  // Public keys (safe to store)
+  encryptionPublicKey   String   // Curve25519 public key for encryption (base64)
+  signingPublicKey      String   // Ed25519 public key for signing (base64)
+  
+  // Metadata
+  keyDerivationVersion  String   @default("hkdf-v1")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  
+  // Relationships
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("user_encrypted_keys")
 }

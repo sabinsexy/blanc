@@ -5,9 +5,9 @@ import prisma from '@/lib/prisma';
 
 const SetupKeysSchema = z.object({
   encryptedPrivateKeys: z.string(),
-  walletEncryptedSecret: z.string(),
-  salt: z.string(),
-  nonce: z.string(),
+  encryptionNonce: z.string(),
+  masterKeySalt: z.string(),
+  encryptionKeySalt: z.string(),
   encryptionPublicKey: z.string(),
   signingPublicKey: z.string(),
 });
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const validatedData = SetupKeysSchema.parse(body);
 
-    const existingKeys = await prisma.encryptedUserKeys.findUnique({
+    const existingKeys = await prisma.userEncryptedKeys.findUnique({
       where: { userId: session.user.id },
     });
 
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const encryptedKeys = await prisma.encryptedUserKeys.create({
+    const encryptedKeys = await prisma.userEncryptedKeys.create({
       data: {
         userId: session.user.id,
         ...validatedData,
