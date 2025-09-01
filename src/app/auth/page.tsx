@@ -1,5 +1,5 @@
-import { WalletAuth } from '@/components/wallet-auth';
+import { CustomWalletConnect } from '@/components/custom-wallet-connect';
 
 export default function AuthPage() {
-  return <WalletAuth />;
+  return <CustomWalletConnect />;
 }
