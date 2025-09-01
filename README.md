@@ -1,7 +1,7 @@
 <div align="center">
   <img src="public/blanc.svg" alt="Blanc Logo" width="400" />
   
-  <br />
+  <div style="height: 30px;"></div>
   
   **Zero-Knowledge • Wallet-First • Private**
 </div>
