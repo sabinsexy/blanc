@@ -1,6 +1,8 @@
 <div align="center">
   <img src="public/blanc.svg" alt="Blanc Logo" width="400" />
   
+  <br />
+  
   **Zero-Knowledge • Wallet-First • Private**
 </div>
 
@@ -43,7 +45,7 @@ Traditional Email:           Blanc Email:
 │     +       │    VS       │     +       │
 │ Server Key  │             │ Zero Data   │
 │     ↓       │             │     ↓       │
-│   📖 Readable │             │ 🔒 Encrypted │
+│  Readable   │             │ Encrypted   │
 └─────────────┘             └─────────────┘
 ```
 
@@ -174,30 +176,25 @@ npm run dev
 
 ## 🗺️ Roadmap
 
-### Phase 1: MVP Launch (Q4 2025) 
+### Phase 1
 - [x] Wallet authentication & SIWE
 - [x] End-to-end encryption infrastructure
 - [ ] Basic email compose/send/receive
 - [ ] Inbox and message threading
 - [ ] Mobile-responsive web app
 
-### Phase 2: Core Features (Q1 2026)
+### Phase 2
 - [ ] File attachments with encryption
 - [ ] Client-side email search
 - [ ] Contact management
 - [ ] Email organization (folders/labels)
 
-### Phase 3: Enhanced UX (Q2 2026)
+### Phase 3
 - [ ] Multiple wallet support per user
 - [ ] Email aliases and custom domains
 - [ ] Improved mobile experience
 - [ ] Performance optimizations
 
-### Phase 4: Platform Growth (Q3-Q4 2026)
-- [ ] Native mobile apps
-- [ ] Browser extensions
-- [ ] Import/export tools
-- [ ] Team accounts and shared inboxes
 
 ## 🤝 Contributing
 
