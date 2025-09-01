@@ -247,6 +247,4 @@ A: We're developing wallet reputation systems and user-controlled filtering that
 
 Built with ❤️ by privacy-focused developers who believe email should be truly private.
 
-[🐦 Twitter](https://twitter.com/blanc_email) • [💬 Discord](https://discord.gg/blanc) • [📧 Email](mailto:hello@blanc.email)
-
 </div>
