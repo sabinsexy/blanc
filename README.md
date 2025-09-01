@@ -66,10 +66,10 @@ Traditional Email:           Blanc Email:
 - Your wallet address is your email identity (`0x123...@blanc.email`)
 - ENS names supported (`vitalik.eth@blanc.email`)
 
-### 🔒 **Military-Grade Encryption**
-- **Curve25519** + **XSalsa20-Poly1305** (same as Signal & Skiff)
-- **HKDF key derivation** from wallet signatures
-- **Forward secrecy** with ephemeral keys
+### 🔒 **Strong Encryption**
+- **Curve25519** elliptic curve + **XSalsa20-Poly1305** authenticated encryption (same primitives as Signal & Skiff)
+- **HKDF key derivation** from wallet signatures using SHA-256
+- **Forward secrecy** with ephemeral keys for each conversation
 
 ### 🌐 **Decentralized & Censorship Resistant**
 - Built on **Cloudflare Workers** for global edge distribution
@@ -170,41 +170,41 @@ npm run dev
 - **Deployment**: Cloudflare Workers + OpenNext
 - **UI**: Radix UI + Lucide Icons + Magic UI
 
-## 🔒 Security Audit Status
+## 🔒 Security Status
 
 ```
-🔍 Self-Audit: ✅ Complete
-🏛️ Third-Party Audit: 📋 Planned for Q2 2024
-🐛 Bug Bounty: 💰 Coming Soon
-🔐 Formal Verification: 📐 Under Consideration
+🔍 Internal Review: ✅ Ongoing
+🏛️ Third-Party Audit: 📋 Planned for Q1 2026
+🐛 Bug Bounty: 💰 Will launch with public beta
+🔐 Code Review: 👥 Open source - review welcome
 ```
 
 ## 🗺️ Roadmap
 
-### Phase 1: Core Platform (Q1 2024) 
+### Phase 1: MVP Launch (Q4 2025) 
 - [x] Wallet authentication & SIWE
-- [x] End-to-end encryption
-- [x] Basic email compose/read
-- [ ] Email threading & conversations
-- [ ] Mobile-responsive UI
+- [x] End-to-end encryption infrastructure
+- [ ] Basic email compose/send/receive
+- [ ] Inbox and message threading
+- [ ] Mobile-responsive web app
 
-### Phase 2: Advanced Features (Q2 2024)
-- [ ] File attachments (encrypted)
-- [ ] Email search (client-side)
+### Phase 2: Core Features (Q1 2026)
+- [ ] File attachments with encryption
+- [ ] Client-side email search
+- [ ] Contact management
+- [ ] Email organization (folders/labels)
+
+### Phase 3: Enhanced UX (Q2 2026)
 - [ ] Multiple wallet support per user
-- [ ] Email aliases & custom domains
+- [ ] Email aliases and custom domains
+- [ ] Improved mobile experience
+- [ ] Performance optimizations
 
-### Phase 3: Ecosystem (Q3 2024)
-- [ ] Mobile apps (React Native)
+### Phase 4: Platform Growth (Q3-Q4 2026)
+- [ ] Native mobile apps
 - [ ] Browser extensions
-- [ ] API for third-party integrations
-- [ ] Decentralized storage options (IPFS)
-
-### Phase 4: Enterprise (Q4 2024)
-- [ ] Team accounts & shared encryption
-- [ ] Compliance tools
-- [ ] Advanced admin controls
-- [ ] White-label solutions
+- [ ] Import/export tools
+- [ ] Team accounts and shared inboxes
 
 ## 🤝 Contributing
 
