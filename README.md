@@ -109,7 +109,7 @@ const encryptionKey = HKDF(masterKey, salt2, "PRIVATE_KEYS")
 
 ```
 ┌─────────────────┐
-│   Next.js App   │ ← Frontend (React + Tailwind)
+│   Next.js App   │ ← Frontend 
 ├─────────────────┤
 │ better-auth +   │ ← Wallet Authentication
 │ SIWE (Ethereum) │
