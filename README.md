@@ -62,7 +62,7 @@ Traditional Email:           Blanc Email:
 - ENS names supported (`vitalik.eth@blanc.email`)
 
 ### 🔒 **Strong Encryption**
-- **Curve25519** elliptic curve + **XSalsa20-Poly1305** authenticated encryption (same primitives as Signal & Skiff)
+- **Curve25519** elliptic curve + **XSalsa20-Poly1305** authenticated encryption (same primitives as Signal)
 - **HKDF key derivation** from wallet signatures using SHA-256
 - **Forward secrecy** with ephemeral keys for each conversation
 
@@ -124,17 +124,17 @@ const encryptionKey = HKDF(masterKey, salt2, "PRIVATE_KEYS")
 ```
 
 ### Security Primitives
-- **Signature Standard**: SIWE (Sign-In With Ethereum)
-- **Key Derivation**: HKDF-SHA256 (same as Skiff Mail)
+- **Signature Standard**: SIWE 
+- **Key Derivation**: HKDF-SHA256
 - **Symmetric Encryption**: XSalsa20-Poly1305 via TweetNaCl
-- **Asymmetric Encryption**: Curve25519 (NaCl Box)
+- **Asymmetric Encryption**: Curve25519 
 - **Forward Secrecy**: Ephemeral key exchange per conversation
 
 ## 🚀 Getting Started (For Developers)
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/blanc.git
+git clone https://github.com/puiusabin/blanc.git
 cd blanc
 
 # Install dependencies
