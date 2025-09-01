@@ -1,15 +1,8 @@
-# 🔐 Blanc - Next-Gen Private Email
-
-```
-  ____  _                  
- |  _ \| |                 
- | |_) | | __ _ _ __   ___  
- |  _ <| |/ _` | '_ \ / __| 
- | |_) | | (_| | | | | (__  
- |____/|_|\__,_|_| |_|\___| 
-                            
-   Zero-Knowledge • Wallet-First • Private
-```
+<div align="center">
+  <img src="public/blanc.svg" alt="Blanc Logo" width="400" />
+  
+  **Zero-Knowledge • Wallet-First • Private**
+</div>
 
 > **🚧 Pre-Launch:** The future of truly private email is being built. Star this repo to be notified when we go live!
 
